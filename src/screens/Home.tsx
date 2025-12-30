@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   View,
   Text,
@@ -11,8 +12,12 @@ import {
 } from "react-native";
 import { searchSongs, type SaavnSong } from "../api/saavn";
 import { usePlayerStore } from "../store/playerStore";
+import { useTheme } from "../theme/ThemeProvider";
 
 export default function Home() {
+  const { theme, mode, toggle } = useTheme();
+  const s = styles(theme);
+
   const [q, setQ] = useState("Believer");
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -26,14 +31,15 @@ export default function Home() {
   const runSearch = async (nextPage = 0) => {
     const query = q.trim();
     if (!query) return;
+
     try {
       setErr("");
       setLoading(true);
       const res = await searchSongs(query, nextPage, 10);
       setSongs(res);
       setPage(nextPage);
-    } catch (e: any) {
-      setErr("Search failed. Try again.");
+    } catch (e) {
+      setErr("Search failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -41,80 +47,83 @@ export default function Home() {
 
   React.useEffect(() => {
     runSearch(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.h1}>Music Player</Text>
+    <SafeAreaView style={s.container}>
+    <View style={s.container}>
+      <View style={s.header}>
+        <Text style={s.brand}>Music Player</Text>
 
-      <View style={styles.searchRow}>
+        <Pressable onPress={toggle} style={s.modeBtn}>
+          <Text style={s.modeTxt}>{mode === "dark" ? "☀" : "🌙"}</Text>
+        </Pressable>
+      </View>
+
+      <View style={s.searchRow}>
         <TextInput
           value={q}
           onChangeText={setQ}
           placeholder="Search songs..."
-          placeholderTextColor="#9CA3AF"
-          style={styles.input}
+          placeholderTextColor={theme.colors.muted}
+          style={s.input}
         />
-        <Pressable onPress={() => runSearch(0)} style={styles.primaryBtn}>
-          <Text style={styles.primaryBtnTxt}>Search</Text>
+        <Pressable onPress={() => runSearch(0)} style={s.searchBtn}>
+          <Text style={s.searchTxt}>Search</Text>
         </Pressable>
       </View>
 
-      <View style={styles.pager}>
+      <View style={s.pager}>
         <Pressable
           disabled={!canPrev || loading}
           onPress={() => runSearch(page - 1)}
-          style={[styles.smallBtn, (!canPrev || loading) && styles.disabled]}
+          style={[s.pillBtn, (!canPrev || loading) && s.disabled]}
         >
-          <Text style={styles.smallBtnTxt}>Prev</Text>
+          <Text style={s.pillTxt}>Prev</Text>
         </Pressable>
 
-        <Text style={styles.pageTxt}>Page: {page}</Text>
+        <Text style={s.pageTxt}>Page: {page}</Text>
 
         <Pressable
           disabled={loading}
           onPress={() => runSearch(page + 1)}
-          style={[styles.smallBtn, loading && styles.disabled]}
+          style={[s.pillBtn, loading && s.disabled]}
         >
-          <Text style={styles.smallBtnTxt}>Next</Text>
+          <Text style={s.pillTxt}>Next</Text>
         </Pressable>
       </View>
 
       {loading ? (
-        <View style={{ marginTop: 20 }}>
+        <View style={{ marginTop: 14 }}>
           <ActivityIndicator />
         </View>
       ) : err ? (
-        <Text style={styles.err}>{err}</Text>
+        <Text style={s.err}>{err}</Text>
       ) : null}
 
       <FlatList
         data={songs}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 90 }}
+        contentContainerStyle={{ paddingBottom: 140 }}
         renderItem={({ item, index }) => (
-          <View style={styles.card}>
-            <Image source={{ uri: item.imageUrl }} style={styles.art} />
+          <View style={s.card}>
+            <Image source={{ uri: item.imageUrl }} style={s.art} />
             <View style={{ flex: 1 }}>
-              <Text numberOfLines={1} style={styles.title}>
+              <Text numberOfLines={1} style={s.title}>
                 {item.name}
               </Text>
-              <Text numberOfLines={1} style={styles.sub}>
+              <Text numberOfLines={1} style={s.sub}>
                 {item.artists}
               </Text>
 
-              <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
-                <Pressable
-                  onPress={() => setQueueAndPlay(songs, index)}
-                  style={styles.playBtn}
-                >
-                  <Text style={styles.btnTxt}>Play</Text>
+              <View style={s.actions}>
+                <Pressable onPress={() => setQueueAndPlay(songs, index)} style={s.playBtn}>
+                  <Text style={s.playTxt}>Play</Text>
                 </Pressable>
-                <Pressable
-                  onPress={() => playSingle(item)}
-                  style={styles.secondaryBtn}
-                >
-                  <Text style={styles.secondaryBtnTxt}>Play Single</Text>
+
+                <Pressable onPress={() => playSingle(item)} style={s.secondaryBtn}>
+                  <Text style={s.secondaryTxt}>Play Single</Text>
                 </Pressable>
               </View>
             </View>
@@ -122,69 +131,104 @@ export default function Home() {
         )}
       />
     </View>
-  );
+  </SafeAreaView>);
+  
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: "#0B1220" },
-  h1: { color: "white", fontSize: 22, fontWeight: "800", marginBottom: 12 },
-  searchRow: { flexDirection: "row", gap: 10, alignItems: "center" },
-  input: {
-    flex: 1,
-    height: 44,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    backgroundColor: "#111827",
-    color: "white",
-  },
-  primaryBtn: {
-    height: 44,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: "#4F46E5",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  primaryBtnTxt: { color: "white", fontWeight: "800" },
-  pager: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 12,
-  },
-  smallBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: "#111827",
-    borderRadius: 12,
-  },
-  smallBtnTxt: { color: "white", fontWeight: "700" },
-  disabled: { opacity: 0.4 },
-  pageTxt: { color: "#9CA3AF", fontWeight: "700" },
-  err: { color: "#FCA5A5", marginTop: 12 },
-  card: {
-    marginTop: 12,
-    flexDirection: "row",
-    gap: 12,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: "#111827",
-  },
-  art: { width: 56, height: 56, borderRadius: 12, backgroundColor: "#374151" },
-  title: { color: "white", fontSize: 15, fontWeight: "800" },
-  sub: { color: "#9CA3AF", fontSize: 12, marginTop: 2 },
-  playBtn: {
-    backgroundColor: "#22C55E",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  btnTxt: { color: "white", fontWeight: "800" },
-  secondaryBtn: {
-    backgroundColor: "#1F2937",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  secondaryBtnTxt: { color: "white", fontWeight: "700" },
-});
+const styles = (theme: any) =>
+  StyleSheet.create({
+    container: { flex: 1, padding: 16, backgroundColor: theme.colors.bg },
+
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
+    brand: { color: theme.colors.text, fontSize: 22, fontWeight: "900" },
+
+    modeBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    modeTxt: { color: theme.colors.text, fontSize: 18, fontWeight: "900" },
+
+    searchRow: { flexDirection: "row", gap: 10, alignItems: "center" },
+    input: {
+      flex: 1,
+      height: 46,
+      borderRadius: theme.radius.pill,
+      paddingHorizontal: 14,
+      backgroundColor: theme.colors.surface,
+      color: theme.colors.text,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    searchBtn: {
+      height: 46,
+      paddingHorizontal: 18,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    searchTxt: { color: "white", fontWeight: "900" },
+
+    pager: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: 12,
+    },
+    pillBtn: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    pillTxt: { color: theme.colors.text, fontWeight: "800" },
+    disabled: { opacity: 0.4 },
+    pageTxt: { color: theme.colors.muted, fontWeight: "800" },
+    err: { color: theme.colors.danger, marginTop: 12, fontWeight: "700" },
+
+    card: {
+      marginTop: 12,
+      flexDirection: "row",
+      gap: 12,
+      padding: 12,
+      borderRadius: theme.radius.lg,
+      backgroundColor: theme.colors.surface2,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    art: { width: 58, height: 58, borderRadius: 16, backgroundColor: theme.colors.surface },
+    title: { color: theme.colors.text, fontSize: 15, fontWeight: "900" },
+    sub: { color: theme.colors.muted, fontSize: 12, marginTop: 2 },
+
+    actions: { flexDirection: "row", gap: 10, marginTop: 10 },
+    playBtn: {
+      backgroundColor: theme.colors.accent,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: theme.radius.pill,
+    },
+    playTxt: { color: "white", fontWeight: "900" },
+
+    secondaryBtn: {
+      backgroundColor: theme.colors.surface,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: theme.radius.pill,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    secondaryTxt: { color: theme.colors.text, fontWeight: "800" },
+  });

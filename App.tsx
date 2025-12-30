@@ -1,9 +1,6 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
-import {
-  NavigationContainer,
-  createNavigationContainerRef,
-} from "@react-navigation/native";
+import { NavigationContainer, createNavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import Home from "./src/screens/Home";
@@ -13,6 +10,8 @@ import MiniPlayer from "./src/components/MiniPlayer";
 
 import { audio } from "./src/player/audio";
 import { usePlayerStore } from "./src/store/playerStore";
+import { ThemeProvider, useTheme } from "./src/theme/ThemeProvider";
+
 
 type RootStackParamList = {
   Home: undefined;
@@ -23,9 +22,10 @@ type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const navRef = createNavigationContainerRef<RootStackParamList>();
 
-export default function App() {
+function AppInner() {
   const hydrate = usePlayerStore((s) => s.hydrate);
   const isHydrated = usePlayerStore((s) => s.isHydrated);
+  const { theme } = useTheme();
 
   const [routeName, setRouteName] = React.useState<string>("Home");
 
@@ -37,13 +37,11 @@ export default function App() {
   const showMini = isHydrated && routeName !== "Player";
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: theme.colors.bg }]}>
       <NavigationContainer
         ref={navRef}
         onReady={() => setRouteName(navRef.getCurrentRoute()?.name ?? "Home")}
-        onStateChange={() =>
-          setRouteName(navRef.getCurrentRoute()?.name ?? "Home")
-        }
+        onStateChange={() => setRouteName(navRef.getCurrentRoute()?.name ?? "Home")}
       >
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Home" component={Home} />
@@ -57,6 +55,14 @@ export default function App() {
   );
 }
 
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppInner />
+    </ThemeProvider>
+  );
+}
+
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0B1220" },
+  root: { flex: 1 },
 });
