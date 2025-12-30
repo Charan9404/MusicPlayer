@@ -23,18 +23,15 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const navRef = createNavigationContainerRef<RootStackParamList>();
 
 function AppInner() {
-  const hydrate = usePlayerStore((s) => s.hydrate);
-  const isHydrated = usePlayerStore((s) => s.isHydrated);
   const { theme } = useTheme();
 
   const [routeName, setRouteName] = React.useState<string>("Home");
 
   React.useEffect(() => {
     audio.initAudioMode();
-    hydrate();
   }, []);
 
-  const showMini = isHydrated && routeName !== "Player";
+  const showMini = routeName !== "Player";
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.bg }]}>

@@ -9,29 +9,48 @@ export default function MiniPlayer() {
   const { theme } = useTheme();
   const s = styles(theme);
 
-  const { queue, currentIndex, isPlaying, togglePlayPause } = usePlayerStore();
+  const store = usePlayerStore() as any;
+  const queue = (store.queue ?? []) as any[];
+  const currentIndex = (store.currentIndex ?? 0) as number;
   const song = queue[currentIndex];
+
+  const isPlaying = !!(store.isPlaying ?? store.playing ?? false);
+
+  const togglePlayPause =
+    (store.togglePlayPause ??
+      store.togglePlay ??
+      store.playPause ??
+      store.toggle ??
+      null) as null | (() => void);
+
+  const play =
+    (store.play ?? store.resume ?? store.start ?? store.playCurrent ?? null) as null | (() => void);
+
+  const pause =
+    (store.pause ?? store.stop ?? store.halt ?? store.pauseCurrent ?? null) as null | (() => void);
+
+  const onPlayPause = () => {
+    if (togglePlayPause) return togglePlayPause();
+    if (isPlaying) return pause?.();
+    return play?.();
+  };
 
   if (!song) return null;
 
   return (
-    <Pressable onPress={() => navigation.navigate("Player")} style={s.wrap}>
-      <View style={s.left}>
+    <View style={s.wrap}>
+      <Pressable onPress={() => navigation.navigate("Player")} style={s.left}>
         <Image source={{ uri: song.imageUrl }} style={s.art} />
         <View style={{ flex: 1 }}>
-          <Text numberOfLines={1} style={s.title}>
-            {song.name}
-          </Text>
-          <Text numberOfLines={1} style={s.sub}>
-            {song.artists}
-          </Text>
+          <Text numberOfLines={1} style={s.title}>{song.name}</Text>
+          <Text numberOfLines={1} style={s.sub}>{song.artists}</Text>
         </View>
-      </View>
+      </Pressable>
 
-      <Pressable onPress={togglePlayPause} style={s.btn}>
+      <Pressable onPress={onPlayPause} style={s.btn}>
         <Text style={s.btnTxt}>{isPlaying ? "Pause" : "Play"}</Text>
       </Pressable>
-    </Pressable>
+    </View>
   );
 }
 

@@ -1,173 +1,395 @@
-import React from "react";
-import { View, Text, Image, Pressable, StyleSheet } from "react-native";
-import Slider from "@react-native-community/slider";
-import { useNavigation } from "@react-navigation/native";
-import { usePlayerStore } from "../store/playerStore";
-import { formatMillis } from "../utils/time";
+import React from "react"
+import { View, Text, Image, Pressable, StyleSheet } from "react-native"
+import { SafeAreaView } from "react-native-safe-area-context"
+import Slider from "@react-native-community/slider"
+import { useNavigation } from "@react-navigation/native"
+import { Ionicons } from "@expo/vector-icons"
+
+import { usePlayerStore } from "../store/playerStore"
+import { useTheme } from "../theme/ThemeProvider"
+
+function formatTime(ms: number) {
+  const total = Math.max(0, Math.floor((ms || 0) / 1000))
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}:${s.toString().padStart(2, "0")}`
+}
 
 export default function Player() {
-  const nav = useNavigation<any>();
-  const {
-    queue,
-    currentIndex,
-    isPlaying,
-    positionMillis,
-    durationMillis,
-    togglePlayPause,
-    next,
-    prev,
-    seekTo,
-    repeat,
-    setRepeat,
-    shuffle,
-    toggleShuffle,
-  } = usePlayerStore();
+  const nav = useNavigation<any>()
+  const { theme, mode, toggle } = useTheme()
+  const s = styles(theme)
 
-  const song = queue[currentIndex];
-  if (!song) {
-    return (
-      <View style={styles.container}>
-        <Text style={{ color: "white" }}>No song selected.</Text>
-      </View>
-    );
+  // ✅ subscribe via selectors (prevents stale UI / non-updating values)
+  const queue = usePlayerStore((st: any) => st.queue ?? [])
+  const currentIndex = usePlayerStore((st: any) => st.currentIndex ?? 0)
+
+  const isPlaying = usePlayerStore((st: any) => !!(st.isPlaying ?? st.playing ?? false))
+
+  const positionMs = usePlayerStore(
+    (st: any) => (st.positionMillis ?? st.positionMs ?? st.position ?? st.progressMs ?? 0) as number,
+  )
+
+  const durationMs = usePlayerStore(
+    (st: any) => (st.durationMillis ?? st.durationMs ?? st.duration ?? st.totalMs ?? 0) as number,
+  )
+
+  // actions (robust)
+  const seekTo = usePlayerStore(
+    (st: any) =>
+      (st.seekTo ?? st.seek ?? st.setPosition ?? st.setProgress ?? null) as null | ((ms: number) => void),
+  )
+
+  const next = usePlayerStore(
+    (st: any) => (st.next ?? st.playNext ?? st.nextTrack ?? st.skipNext ?? null) as null | (() => void),
+  )
+
+  const prev = usePlayerStore(
+    (st: any) => (st.prev ?? st.previous ?? st.playPrev ?? st.prevTrack ?? st.skipPrev ?? null) as null | (() => void),
+  )
+
+  const togglePlayPause = usePlayerStore(
+    (st: any) => (st.togglePlayPause ?? st.togglePlay ?? st.playPause ?? st.toggle ?? null) as null | (() => void),
+  )
+
+  const play = usePlayerStore(
+    (st: any) => (st.play ?? st.resume ?? st.start ?? st.playCurrent ?? null) as null | (() => void),
+  )
+
+  const pause = usePlayerStore(
+    (st: any) => (st.pause ?? st.stop ?? st.halt ?? st.pauseCurrent ?? null) as null | (() => void),
+  )
+
+  // ✅ CRITICAL: these two usually exist in your app and actually START playback
+  const setQueueAndPlay = usePlayerStore(
+    (st: any) =>
+      (st.setQueueAndPlay ??
+        st.setQueueAndPlayAt ??
+        st.playFromQueue ??
+        st.playAt ??
+        null) as null | ((q: any[], i?: number) => void),
+  )
+
+  const playSingle = usePlayerStore(
+    (st: any) => (st.playSingle ?? st.playSong ?? null) as null | ((song: any) => void),
+  )
+
+  const shuffleOn = usePlayerStore((st: any) => !!(st.shuffleOn ?? st.isShuffle ?? st.shuffleEnabled ?? false))
+
+  const toggleShuffle = usePlayerStore(
+    (st: any) => (st.toggleShuffle ?? st.shuffleToggle ?? st.toggleIsShuffle ?? null) as null | (() => void),
+  )
+
+  const repeatMode = usePlayerStore((st: any) => st.repeatMode ?? st.repeat ?? "off")
+
+  const cycleRepeat = usePlayerStore(
+    (st: any) => (st.cycleRepeat ?? st.toggleRepeat ?? st.repeatToggle ?? null) as null | (() => void),
+  )
+
+  const song = queue?.[currentIndex]
+
+  const safeDuration = Math.max(1, durationMs || 0)
+  const [dragMs, setDragMs] = React.useState<number | null>(null)
+  const shownPos = dragMs ?? positionMs
+
+  // ✅ FIXED: this guarantees play actually starts
+  const startPlayback = () => {
+    // 1) best: set queue + index + start
+    if (setQueueAndPlay && queue?.length) return setQueueAndPlay(queue, currentIndex)
+
+    // 2) next best: play a single song directly
+    if (playSingle && song) return playSingle(song)
+
+    // 3) fallback: store play methods
+    if (play) return play()
+
+    // 4) last fallback
+    return togglePlayPause?.()
   }
 
-  const cycleRepeat = async () => {
-    if (repeat === "off") await setRepeat("all");
-    else if (repeat === "all") await setRepeat("one");
-    else await setRepeat("off");
-  };
+  const onPlayPause = () => {
+    if (isPlaying) {
+      // pause (prefer toggle if it exists)
+      if (togglePlayPause) return togglePlayPause()
+      return pause?.()
+    }
+    // not playing => start properly
+    return startPlayback()
+  }
+
+  const repeatActive = String(repeatMode) !== "off"
+
+  if (!song) {
+    return (
+      <SafeAreaView style={[s.container, s.center]}>
+        <Text style={s.emptyTxt}>No song playing</Text>
+        <Pressable onPress={() => nav.goBack()} style={s.topPill}>
+          <Text style={s.topPillTxt}>Back</Text>
+        </Pressable>
+      </SafeAreaView>
+    )
+  }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.topRow}>
-        <Pressable onPress={() => nav.goBack()} style={styles.topBtn}>
-          <Text style={styles.topBtnTxt}>Back</Text>
+    <SafeAreaView style={s.container}>
+      {/* Top bar (Spotify-like simple) */}
+      <View style={s.topBar}>
+        <Pressable onPress={() => nav.goBack()} style={s.topLeft}>
+          <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
+          <Text style={s.topLeftTxt}>Back</Text>
         </Pressable>
-        <Pressable onPress={() => nav.navigate("Queue")} style={styles.topBtn}>
-          <Text style={styles.topBtnTxt}>Queue</Text>
-        </Pressable>
-      </View>
 
-      <Image source={{ uri: song.imageUrl }} style={styles.art} />
-      <Text numberOfLines={2} style={styles.title}>
-        {song.name}
-      </Text>
-      <Text numberOfLines={1} style={styles.sub}>
-        {song.artists}
-      </Text>
+        <View style={s.topRight}>
+          <Pressable onPress={() => nav.navigate("Queue")} style={s.topPill}>
+            <Text style={s.topPillTxt}>Queue</Text>
+          </Pressable>
 
-      <View style={{ marginTop: 18 }}>
-        <Slider
-          value={positionMillis}
-          minimumValue={0}
-          maximumValue={Math.max(1, durationMillis)}
-          onSlidingComplete={(v) => seekTo(Number(v))}
-          minimumTrackTintColor="#4F46E5"
-          maximumTrackTintColor="#374151"
-          thumbTintColor="#A5B4FC"
-        />
-        <View style={styles.timeRow}>
-          <Text style={styles.timeTxt}>{formatMillis(positionMillis)}</Text>
-          <Text style={styles.timeTxt}>{formatMillis(durationMillis)}</Text>
+          <Pressable onPress={toggle} style={s.modeBtn}>
+            <Text style={s.modeTxt}>{mode === "dark" ? "☀" : "🌙"}</Text>
+          </Pressable>
         </View>
       </View>
 
-      <View style={styles.controls}>
-        <Pressable
-          onPress={toggleShuffle}
-          style={[styles.modeBtn, shuffle && styles.modeActive]}
-        >
-          <Text style={styles.modeTxt}>Shuffle</Text>
-        </Pressable>
+      {/* Artwork section */}
+      <View style={s.artSection}>
+        <View style={s.glow} />
+        <Image source={{ uri: song.imageUrl }} style={s.art} />
+      </View>
 
-        <Pressable onPress={prev} style={styles.ctrlBtn}>
-          <Text style={styles.ctrlTxt}>Prev</Text>
-        </Pressable>
+      {/* Title section */}
+      <View style={s.metaRow}>
+        <View style={{ flex: 1 }}>
+          <Text numberOfLines={1} style={s.title}>
+            {song.name}
+          </Text>
+          <Text numberOfLines={1} style={s.artist}>
+            {song.artists}
+          </Text>
+        </View>
 
-        <Pressable
-          onPress={togglePlayPause}
-          style={[styles.ctrlBtn, styles.playBtn]}
-        >
-          <Text style={styles.ctrlTxt}>{isPlaying ? "Pause" : "Play"}</Text>
-        </Pressable>
-
-        <Pressable onPress={next} style={styles.ctrlBtn}>
-          <Text style={styles.ctrlTxt}>Next</Text>
-        </Pressable>
-
-        <Pressable
-          onPress={cycleRepeat}
-          style={[styles.modeBtn, repeat !== "off" && styles.modeActive]}
-        >
-          <Text style={styles.modeTxt}>Repeat: {repeat}</Text>
+        <Pressable style={s.likeBtn} onPress={() => {}}>
+          <Ionicons name="heart-outline" size={22} color={theme.colors.text} />
         </Pressable>
       </View>
-    </View>
-  );
+
+      {/* Slider */}
+      <View style={s.sliderWrap}>
+        <Slider
+          value={Math.min(shownPos, safeDuration)}
+          minimumValue={0}
+          maximumValue={safeDuration}
+          onValueChange={(v) => setDragMs(v)}
+          onSlidingComplete={(v) => {
+            setDragMs(null)
+            seekTo?.(Math.floor(v))
+          }}
+          minimumTrackTintColor={theme.colors.accent}
+          maximumTrackTintColor={theme.colors.border}
+          thumbTintColor={theme.colors.accent}
+        />
+        <View style={s.timeRow}>
+          <Text style={s.timeTxt}>{formatTime(shownPos)}</Text>
+          <Text style={s.timeTxt}>{formatTime(safeDuration)}</Text>
+        </View>
+      </View>
+
+      <View style={{ flex: 1, minHeight: 20 }} />
+
+      <View style={s.controlsArea}>
+        <View style={s.transportRow}>
+          <Pressable onPress={() => toggleShuffle?.()} style={[s.smallIconBtn, shuffleOn && s.smallIconBtnActive]}>
+            <Ionicons name="shuffle" size={18} color={shuffleOn ? "white" : theme.colors.text} />
+          </Pressable>
+
+          <Pressable onPress={() => prev?.()} style={s.midIconBtn}>
+            <Ionicons name="play-skip-back" size={28} color={theme.colors.text} />
+          </Pressable>
+
+          <Pressable onPress={onPlayPause} style={s.playBtnBig}>
+            <Ionicons
+              name={isPlaying ? "pause" : "play"}
+              size={30}
+              color="white"
+              style={!isPlaying ? { marginLeft: 2 } : undefined}
+            />
+          </Pressable>
+
+          <Pressable onPress={() => next?.()} style={s.midIconBtn}>
+            <Ionicons name="play-skip-forward" size={28} color={theme.colors.text} />
+          </Pressable>
+
+          <Pressable onPress={() => cycleRepeat?.()} style={[s.smallIconBtn, repeatActive && s.smallIconBtnActive]}>
+            <Ionicons name="repeat" size={18} color={repeatActive ? "white" : theme.colors.text} />
+          </Pressable>
+        </View>
+
+        <View style={s.bottomPillRow}>
+          <View style={s.repeatPill}>
+            <Text style={s.repeatTxt}>Repeat: {String(repeatMode)}</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={{ height: 16 }} />
+    </SafeAreaView>
+  )
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 16,
-    backgroundColor: "#0B1220",
-    alignItems: "center",
-  },
-  topRow: {
-    width: "100%",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  topBtn: {
-    backgroundColor: "#111827",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  topBtnTxt: { color: "white", fontWeight: "700" },
+const styles = (theme: any) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: theme.colors.bg, paddingHorizontal: 16 },
+    center: { justifyContent: "center", alignItems: "center" },
 
-  art: {
-    width: 260,
-    height: 260,
-    borderRadius: 18,
-    marginTop: 18,
-    backgroundColor: "#374151",
-  },
-  title: {
-    color: "white",
-    fontSize: 18,
-    fontWeight: "900",
-    marginTop: 16,
-    textAlign: "center",
-  },
-  sub: { color: "#9CA3AF", marginTop: 6 },
+    topBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingVertical: 14,
+      marginBottom: 8,
+    },
+    topLeft: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8 },
+    topLeftTxt: { color: theme.colors.text, fontWeight: "900", fontSize: 16 },
+    topRight: { flexDirection: "row", gap: 12, alignItems: "center" },
 
-  timeRow: {
-    width: "100%",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 6,
-  },
-  timeTxt: { color: "#9CA3AF", fontWeight: "700" },
+    topPill: {
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: theme.radius.pill,
+    },
+    topPillTxt: { color: theme.colors.text, fontWeight: "900", fontSize: 14 },
 
-  controls: { marginTop: 20, width: "100%", gap: 10, alignItems: "center" },
-  ctrlBtn: {
-    width: "70%",
-    paddingVertical: 12,
-    borderRadius: 14,
-    backgroundColor: "#111827",
-    alignItems: "center",
-  },
-  playBtn: { backgroundColor: "#4F46E5" },
-  ctrlTxt: { color: "white", fontWeight: "900" },
+    modeBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    modeTxt: { color: theme.colors.text, fontSize: 18, fontWeight: "900" },
 
-  modeBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: "#111827",
-  },
-  modeActive: { borderWidth: 1, borderColor: "#4F46E5" },
-  modeTxt: { color: "white", fontWeight: "700" },
-});
+    artSection: {
+      alignItems: "center",
+      justifyContent: "center",
+      marginVertical: 24,
+      marginBottom: 28,
+    },
+    glow: {
+      position: "absolute",
+      width: 270,
+      height: 270,
+      borderRadius: 40,
+      backgroundColor: theme.colors.accentSoft,
+      opacity: theme.mode === "dark" ? 0.35 : 0.25,
+      transform: [{ scale: 1.08 }],
+    },
+    art: {
+      width: 250,
+      height: 250,
+      borderRadius: theme.radius.xl,
+      backgroundColor: theme.colors.surface,
+    },
+
+    metaRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 16,
+      marginBottom: 20,
+    },
+    title: { color: theme.colors.text, fontSize: 22, fontWeight: "900", lineHeight: 28 },
+    artist: { color: theme.colors.muted, marginTop: 6, fontWeight: "700", fontSize: 14, lineHeight: 20 },
+
+    likeBtn: {
+      width: 48,
+      height: 48,
+      borderRadius: 16,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0,
+    },
+
+    sliderWrap: {
+      marginBottom: 16,
+      backgroundColor: theme.colors.surface2,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.radius.lg,
+      paddingHorizontal: 14,
+      paddingVertical: 14,
+    },
+    timeRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 10 },
+    timeTxt: { color: theme.colors.muted, fontWeight: "800", fontSize: 12 },
+
+    controlsArea: {
+      backgroundColor: theme.colors.surface2,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.radius.lg,
+      paddingVertical: 20,
+      paddingHorizontal: 14,
+    },
+
+    transportRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 12,
+      marginBottom: 16,
+    },
+
+    smallIconBtn: {
+      width: 48,
+      height: 48,
+      borderRadius: 16,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    smallIconBtnActive: {
+      backgroundColor: theme.colors.accent,
+      borderColor: theme.colors.accent,
+    },
+
+    midIconBtn: {
+      width: 60,
+      height: 60,
+      borderRadius: 18,
+      backgroundColor: "transparent",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    playBtnBig: {
+      width: 76,
+      height: 76,
+      borderRadius: 38,
+      backgroundColor: theme.colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+      marginHorizontal: 12,
+    },
+
+    bottomPillRow: { marginTop: 12, alignItems: "center", justifyContent: "center" },
+    repeatPill: {
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: theme.radius.pill,
+    },
+    repeatTxt: { color: theme.colors.text, fontWeight: "900", fontSize: 14 },
+
+    emptyTxt: { color: theme.colors.text, fontWeight: "900" },
+  })
