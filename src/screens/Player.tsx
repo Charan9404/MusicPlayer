@@ -1,5 +1,5 @@
-import React from "react";
-import { View, Text, Image, Pressable, StyleSheet, Platform } from "react-native";
+import React, { useMemo, useState } from "react";
+import { View, Text, Image, Pressable, StyleSheet, Modal, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
 import { useNavigation } from "@react-navigation/native";
@@ -15,9 +15,115 @@ function formatTime(ms: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function clamp(n: number, lo: number, hi: number) {
-  return Math.max(lo, Math.min(hi, n));
+/** Simple bottom sheet */
+function ActionSheet({
+  visible,
+  onClose,
+  theme,
+  headerSong,
+  items,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  theme: any;
+  headerSong: any | null;
+  items: { icon: any; label: string; onPress: () => void; destructive?: boolean }[];
+}) {
+  if (!visible) return null;
+
+  return (
+    <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
+      <Pressable style={sheetStyles.overlay} onPress={onClose}>
+        <Pressable
+          style={[
+            sheetStyles.card,
+            { backgroundColor: theme.colors.surface2, borderColor: theme.colors.border },
+          ]}
+          onPress={() => {}}
+        >
+          <View style={sheetStyles.grabberWrap}>
+            <View style={[sheetStyles.grabber, { backgroundColor: theme.colors.border }]} />
+          </View>
+
+          {headerSong ? (
+            <View style={sheetStyles.headerRow}>
+              {headerSong?.imageUrl ? (
+                <Image source={{ uri: headerSong.imageUrl }} style={sheetStyles.headerArt} />
+              ) : (
+                <View style={[sheetStyles.headerArt, { backgroundColor: theme.colors.surface }]} />
+              )}
+              <View style={{ flex: 1 }}>
+                <Text numberOfLines={1} style={[sheetStyles.headerTitle, { color: theme.colors.text }]}>
+                  {headerSong?.name ?? "Song"}
+                </Text>
+                <Text numberOfLines={1} style={[sheetStyles.headerSub, { color: theme.colors.muted }]}>
+                  {headerSong?.artists ?? ""}
+                </Text>
+              </View>
+
+              <Pressable style={[sheetStyles.heartBtn, { backgroundColor: theme.colors.surface }]} onPress={() => {}}>
+                <Ionicons name="heart-outline" size={18} color={theme.colors.text} />
+              </Pressable>
+            </View>
+          ) : null}
+
+          <View style={{ marginTop: 6 }}>
+            {items.map((it, idx) => (
+              <Pressable
+                key={`${it.label}-${idx}`}
+                onPress={() => {
+                  onClose();
+                  it.onPress();
+                }}
+                style={sheetStyles.itemRow}
+              >
+                <View style={sheetStyles.itemIcon}>
+                  <Ionicons
+                    name={it.icon}
+                    size={18}
+                    color={it.destructive ? "#EF4444" : theme.colors.text}
+                  />
+                </View>
+                <Text
+                  style={[
+                    sheetStyles.itemLabel,
+                    { color: it.destructive ? "#EF4444" : theme.colors.text },
+                  ]}
+                >
+                  {it.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
 }
+
+const sheetStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+  card: {
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    borderWidth: 1,
+    paddingBottom: 14,
+    paddingTop: 8,
+    paddingHorizontal: 14,
+  },
+  grabberWrap: { alignItems: "center", paddingBottom: 10 },
+  grabber: { width: 44, height: 5, borderRadius: 999 },
+
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingBottom: 10 },
+  headerArt: { width: 56, height: 56, borderRadius: 16, backgroundColor: "#111" },
+  headerTitle: { fontSize: 14, fontWeight: "900" },
+  headerSub: { fontSize: 12, fontWeight: "700", marginTop: 2 },
+  heartBtn: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+
+  itemRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
+  itemIcon: { width: 26, alignItems: "center" },
+  itemLabel: { fontSize: 14, fontWeight: "800" },
+});
 
 export default function Player() {
   const nav = useNavigation<any>();
@@ -26,193 +132,138 @@ export default function Player() {
 
   const queue = usePlayerStore((st: any) => st.queue ?? []);
   const currentIndex = usePlayerStore((st: any) => st.currentIndex ?? 0);
-  const song = queue?.[currentIndex];
+  const isPlaying = usePlayerStore((st: any) => !!st.isPlaying);
+  const positionMs = usePlayerStore((st: any) => st.positionMs ?? 0);
+  const durationMs = usePlayerStore((st: any) => st.durationMs ?? 0);
+  const shuffleOn = usePlayerStore((st: any) => !!st.shuffleOn);
+  const repeatMode = usePlayerStore((st: any) => st.repeatMode ?? "off");
 
-  const isPlaying = usePlayerStore((st: any) => !!(st.isPlaying ?? st.playing ?? false));
+  const togglePlayPause = usePlayerStore((st: any) => st.togglePlayPause);
+  const next = usePlayerStore((st: any) => st.next);
+  const prev = usePlayerStore((st: any) => st.prev);
+  const seekTo = usePlayerStore((st: any) => st.seekTo);
 
-  const positionMs = usePlayerStore(
-    (st: any) => (st.positionMillis ?? st.positionMs ?? st.position ?? st.progressMs ?? 0) as number
-  );
+  const toggleShuffle = usePlayerStore((st: any) => st.toggleShuffle);
+  const cycleRepeat = usePlayerStore((st: any) => st.cycleRepeat);
 
-  const durationMs = usePlayerStore(
-    (st: any) => (st.durationMillis ?? st.durationMs ?? st.duration ?? st.totalMs ?? 0) as number
-  );
+  const song = queue?.[currentIndex] ?? null;
 
-  const seekTo = usePlayerStore(
-    (st: any) =>
-      (st.seekTo ?? st.seek ?? st.setPosition ?? st.setProgress ?? null) as null | ((ms: number) => void)
-  );
+  const [sheetOpen, setSheetOpen] = useState(false);
 
-  const next = usePlayerStore(
-    (st: any) => (st.next ?? st.playNext ?? st.nextTrack ?? st.skipNext ?? null) as null | (() => void)
-  );
-
-  const prev = usePlayerStore(
-    (st: any) => (st.prev ?? st.previous ?? st.playPrev ?? st.prevTrack ?? st.skipPrev ?? null) as null | (() => void)
-  );
-
-  const togglePlayPause = usePlayerStore(
-    (st: any) => (st.togglePlayPause ?? st.togglePlay ?? st.playPause ?? st.toggle ?? null) as null | (() => void)
-  );
-
-  const play = usePlayerStore(
-    (st: any) => (st.play ?? st.resume ?? st.start ?? st.playCurrent ?? null) as null | (() => void)
-  );
-
-  const pause = usePlayerStore(
-    (st: any) => (st.pause ?? st.stop ?? st.halt ?? st.pauseCurrent ?? null) as null | (() => void)
-  );
-
-  const setQueueAndPlay = usePlayerStore(
-    (st: any) =>
-      (st.setQueueAndPlay ??
-        st.setQueueAndPlayAt ??
-        st.playFromQueue ??
-        st.playAt ??
-        null) as null | ((q: any[], i?: number) => void)
-  );
-
-  const playSingle = usePlayerStore(
-    (st: any) => (st.playSingle ?? st.playSong ?? null) as null | ((song: any) => void)
-  );
-
-  const shuffleOn = usePlayerStore((st: any) => !!(st.shuffleOn ?? st.isShuffle ?? st.shuffleEnabled ?? false));
-  const toggleShuffle = usePlayerStore(
-    (st: any) => (st.toggleShuffle ?? st.shuffleToggle ?? st.toggleIsShuffle ?? null) as null | (() => void)
-  );
-
-  const repeatMode = usePlayerStore((st: any) => st.repeatMode ?? st.repeat ?? "off");
-  const cycleRepeat = usePlayerStore(
-    (st: any) => (st.cycleRepeat ?? st.toggleRepeat ?? st.repeatToggle ?? null) as null | (() => void)
-  );
-
-  const safeDuration = Math.max(1, durationMs || 0);
-  const [dragMs, setDragMs] = React.useState<number | null>(null);
-  const shownPos = dragMs ?? positionMs;
-
-  const startPlayback = () => {
-    if (setQueueAndPlay && queue?.length) return setQueueAndPlay(queue, currentIndex);
-    if (playSingle && song) return playSingle(song);
-    if (play) return play();
-    return togglePlayPause?.();
-  };
-
-  const onPlayPause = () => {
-    if (isPlaying) {
-      if (togglePlayPause) return togglePlayPause();
-      return pause?.();
-    }
-    return startPlayback();
-  };
-
-  const jumpBy = (deltaMs: number) => {
-    if (!seekTo) return;
-    const nextPos = clamp((positionMs || 0) + deltaMs, 0, safeDuration);
-    seekTo(nextPos);
-  };
-
-  const repeatActive = String(repeatMode) !== "off";
+  const menuItems = useMemo(() => {
+    if (!song) return [];
+    return [
+      {
+        icon: "play-skip-forward-outline",
+        label: "Play Next",
+        onPress: () => {
+          const st = (usePlayerStore as any).getState?.();
+          const q0 = st?.queue ?? queue ?? [];
+          const idx0 = st?.currentIndex ?? currentIndex ?? 0;
+          const nextQ = q0.slice();
+          nextQ.splice(Math.min(idx0 + 1, nextQ.length), 0, song);
+          (usePlayerStore as any).setState({ queue: nextQ });
+        },
+      },
+      {
+        icon: "list-outline",
+        label: "Add to Playing Queue",
+        onPress: () => {
+          const st = (usePlayerStore as any).getState?.();
+          const q0 = st?.queue ?? queue ?? [];
+          (usePlayerStore as any).setState({ queue: q0.concat([song]) });
+        },
+      },
+      {
+        icon: "information-circle-outline",
+        label: "Details",
+        onPress: () => {
+          Alert.alert("Now Playing", `${song?.name ?? ""}\n${song?.artists ?? ""}`);
+        },
+      },
+    ];
+  }, [song, queue, currentIndex]);
 
   if (!song) {
     return (
-      <SafeAreaView style={[s.container, s.center]}>
-        <Text style={s.emptyTxt}>No song playing</Text>
-        <Pressable onPress={() => nav.goBack()} style={s.iconBtn}>
-          <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
-        </Pressable>
+      <SafeAreaView style={s.safe}>
+        <View style={s.topBar}>
+          <Pressable onPress={() => nav.goBack()} style={s.iconBtn}>
+            <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
+          </Pressable>
+          <Text style={s.topTitle}>Now Playing</Text>
+          <View style={{ width: 42 }} />
+        </View>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <Text style={s.emptyTxt}>No song playing</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
+  const progress = durationMs > 0 ? Math.min(positionMs, durationMs) : 0;
+
   return (
-    <SafeAreaView style={s.container}>
-      {/* Top bar (flat) */}
+    <SafeAreaView style={s.safe}>
+      {/* Top bar */}
       <View style={s.topBar}>
-        <Pressable onPress={() => nav.goBack()} style={s.iconBtn} hitSlop={10}>
-          <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
+        <Pressable onPress={() => nav.goBack()} style={s.iconBtn}>
+          <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
         </Pressable>
 
         <Text style={s.topTitle}>Now Playing</Text>
 
-        <View style={s.topRight}>
-          <Pressable onPress={() => nav.navigate("Queue")} style={s.iconBtn} hitSlop={10}>
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          <Pressable onPress={() => nav.navigate("Queue")} style={s.iconBtn}>
             <Ionicons name="list" size={18} color={theme.colors.text} />
           </Pressable>
-
-          <Pressable onPress={toggle} style={s.iconBtn} hitSlop={10}>
+          <Pressable onPress={toggle} style={s.iconBtn}>
             <Text style={s.modeTxt}>{mode === "dark" ? "☀" : "🌙"}</Text>
           </Pressable>
         </View>
       </View>
 
-      {/* Album Art (centered, big, flat) */}
-      <View style={s.artArea}>
-        <Image source={{ uri: song.imageUrl }} style={s.art} />
+      {/* Artwork */}
+      <View style={s.artWrap}>
+        {song.imageUrl ? (
+          <Image source={{ uri: song.imageUrl }} style={s.art} />
+        ) : (
+          <View style={[s.art, { backgroundColor: theme.colors.surface }]} />
+        )}
       </View>
 
-      {/* Title / Artist (center aligned like reference) */}
-      <View style={s.titleArea}>
-        <Text numberOfLines={1} style={s.title}>
+      {/* Title + artist */}
+      <View style={s.titleWrap}>
+        <Text numberOfLines={2} style={s.songTitle}>
           {song.name}
         </Text>
-        <Text numberOfLines={1} style={s.artist}>
+        <Text numberOfLines={1} style={s.songSub}>
           {song.artists}
         </Text>
       </View>
 
-      {/* Slider (no card) */}
-      <View style={s.sliderArea}>
+      {/* Progress */}
+      <View style={s.progressWrap}>
         <Slider
-          value={Math.min(shownPos, safeDuration)}
+          style={{ width: "100%" }}
           minimumValue={0}
-          maximumValue={safeDuration}
-          onValueChange={(v) => setDragMs(v)}
-          onSlidingComplete={(v) => {
-            setDragMs(null);
-            seekTo?.(Math.floor(v));
-          }}
+          maximumValue={Math.max(1, durationMs)}
+          value={progress}
           minimumTrackTintColor={theme.colors.accent}
-          maximumTrackTintColor={theme.mode === "dark" ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.15)"}
+          maximumTrackTintColor={theme.colors.border}
           thumbTintColor={theme.colors.accent}
+          onSlidingComplete={(v) => seekTo(Math.floor(v))}
         />
 
         <View style={s.timeRow}>
-          <Text style={s.timeTxt}>{formatTime(shownPos)}</Text>
-          <Text style={s.timeTxt}>{formatTime(safeDuration)}</Text>
+          <Text style={s.timeTxt}>{formatTime(progress)}</Text>
+          <Text style={s.timeTxt}>{formatTime(durationMs)}</Text>
         </View>
       </View>
 
-      {/* Primary controls (flat row) */}
-      <View style={s.primaryControls}>
-        <Pressable onPress={() => prev?.()} style={s.ctrlBtn} hitSlop={12}>
-          <Ionicons name="play-skip-back" size={26} color={theme.colors.text} />
-        </Pressable>
-
-        <Pressable onPress={() => jumpBy(-10_000)} style={s.ctrlBtn} hitSlop={12}>
-          <Ionicons name="play-back" size={26} color={theme.colors.text} />
-        </Pressable>
-
-        <Pressable onPress={onPlayPause} style={s.playBtn} hitSlop={14}>
-          <Ionicons
-            name={isPlaying ? "pause" : "play"}
-            size={30}
-            color={"white"}
-            style={!isPlaying ? { marginLeft: 2 } : undefined}
-          />
-        </Pressable>
-
-        <Pressable onPress={() => jumpBy(10_000)} style={s.ctrlBtn} hitSlop={12}>
-          <Ionicons name="play-forward" size={26} color={theme.colors.text} />
-        </Pressable>
-
-        <Pressable onPress={() => next?.()} style={s.ctrlBtn} hitSlop={12}>
-          <Ionicons name="play-skip-forward" size={26} color={theme.colors.text} />
-        </Pressable>
-      </View>
-
-      {/* Secondary controls row (like reference bottom icons) */}
-      <View style={s.secondaryControls}>
-        <Pressable onPress={() => toggleShuffle?.()} style={s.secondaryBtn} hitSlop={10}>
+      {/* Controls */}
+      <View style={s.controls}>
+        <Pressable onPress={toggleShuffle} style={s.ctrlIcon}>
           <Ionicons
             name="shuffle"
             size={20}
@@ -220,217 +271,157 @@ export default function Player() {
           />
         </Pressable>
 
-        <Pressable onPress={() => {}} style={s.secondaryBtn} hitSlop={10}>
-          <Ionicons name="timer-outline" size={20} color={theme.colors.muted} />
+        <Pressable onPress={() => prev?.()} style={s.ctrlIcon}>
+          <Ionicons name="play-skip-back" size={22} color={theme.colors.text} />
         </Pressable>
 
-        <Pressable onPress={() => {}} style={s.secondaryBtn} hitSlop={10}>
-          <Ionicons name="radio-outline" size={20} color={theme.colors.muted} />
+        <Pressable onPress={() => togglePlayPause?.()} style={s.playBig}>
+          <Ionicons name={isPlaying ? "pause" : "play"} size={28} color={"white"} />
         </Pressable>
 
-        {/* ✅ Repeat with "1" badge when repeatMode === "one" */}
-        <Pressable
-          onPress={() => cycleRepeat?.()}
-          style={[s.secondaryBtn, { position: "relative" }]}
-          hitSlop={10}
-        >
-          <Ionicons
-            name="repeat"
-            size={20}
-            color={repeatActive ? theme.colors.accent : theme.colors.muted}
-          />
-
-          {String(repeatMode) === "one" ? (
-            <View style={s.repeatOneBadge}>
-              <Text style={s.repeatOneTxt}>1</Text>
-            </View>
-          ) : null}
+        <Pressable onPress={() => next?.()} style={s.ctrlIcon}>
+          <Ionicons name="play-skip-forward" size={22} color={theme.colors.text} />
         </Pressable>
 
-        <Pressable onPress={() => {}} style={s.secondaryBtn} hitSlop={10}>
-          <Ionicons name="ellipsis-horizontal" size={22} color={theme.colors.muted} />
+        <Pressable onPress={cycleRepeat} style={s.ctrlIcon}>
+          <View style={{ alignItems: "center", justifyContent: "center" }}>
+            <Ionicons
+              name="repeat"
+              size={20}
+              color={repeatMode === "off" ? theme.colors.muted : theme.colors.accent}
+            />
+            {repeatMode === "one" ? (
+              <View style={s.repeatOneBadge}>
+                <Text style={s.repeatOneTxt}>1</Text>
+              </View>
+            ) : null}
+          </View>
         </Pressable>
       </View>
 
-      {/* Lyrics handle */}
-      <View style={s.lyricsArea}>
+      {/* Bottom mini row */}
+      <View style={s.bottomRow}>
+        <Text style={s.repeatLabel}>Repeat: {repeatMode}</Text>
+
+        <Pressable onPress={() => setSheetOpen(true)} style={s.moreBtn}>
+          <Ionicons name="ellipsis-horizontal" size={20} color={theme.colors.text} />
+        </Pressable>
+      </View>
+
+      {/* Lyrics hint */}
+      <View style={s.lyricsHint}>
         <Ionicons name="chevron-up" size={16} color={theme.colors.muted} />
         <Text style={s.lyricsTxt}>Lyrics</Text>
       </View>
+
+      <ActionSheet
+        visible={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        theme={theme}
+        headerSong={song}
+        items={menuItems}
+      />
     </SafeAreaView>
   );
 }
 
-const styles = (theme: any) => {
-  const isDark = theme.mode === "dark";
-
-  return StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: theme.colors.bg,
-      paddingHorizontal: 18,
-    },
-    center: { justifyContent: "center", alignItems: "center" },
+const styles = (theme: any) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: theme.colors.bg, paddingHorizontal: 16 },
 
     topBar: {
+      paddingTop: 6,
+      paddingBottom: 8,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      paddingVertical: 12,
     },
-    topTitle: {
-      color: theme.colors.text,
-      fontWeight: "800",
-      fontSize: 15,
-    },
-    topRight: { flexDirection: "row", alignItems: "center", gap: 10 },
-
-    // flat icon buttons: no borders, no boxes
+    topTitle: { color: theme.colors.text, fontWeight: "900", fontSize: 15 },
     iconBtn: {
       width: 42,
       height: 42,
-      borderRadius: 21,
+      borderRadius: 14,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: "transparent",
     },
-    modeTxt: { color: theme.colors.text, fontSize: 16, fontWeight: "900" },
+    modeTxt: { color: theme.colors.text, fontWeight: "900" },
 
-    artArea: {
-      alignItems: "center",
-      justifyContent: "center",
-      marginTop: 12,
-      marginBottom: 16,
-    },
+    artWrap: { alignItems: "center", paddingTop: 8 },
     art: {
-      width: 300,
-      height: 300,
+      width: 280,
+      height: 280,
       borderRadius: 28,
       backgroundColor: theme.colors.surface,
-      ...(Platform.OS === "ios"
-        ? {
-            shadowColor: "#000",
-            shadowOpacity: isDark ? 0.25 : 0.10,
-            shadowRadius: 18,
-            shadowOffset: { width: 0, height: 10 },
-          }
-        : { elevation: 6 }),
     },
 
-    titleArea: {
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: 10,
-      paddingHorizontal: 8,
-    },
-    title: {
-      color: theme.colors.text,
-      fontSize: 24,
-      fontWeight: "900",
-      textAlign: "center",
-    },
-    artist: {
-      color: theme.colors.muted,
-      fontSize: 13,
-      fontWeight: "700",
-      marginTop: 6,
-      textAlign: "center",
-    },
+    titleWrap: { alignItems: "center", paddingTop: 16 },
+    songTitle: { color: theme.colors.text, fontWeight: "900", fontSize: 22, textAlign: "center" },
+    songSub: { color: theme.colors.muted, fontWeight: "800", marginTop: 6 },
 
-    sliderArea: {
-      marginTop: 4,
-      marginBottom: 16,
-    },
-    timeRow: {
+    progressWrap: { paddingTop: 16 },
+    timeRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 6 },
+    timeTxt: { color: theme.colors.muted, fontWeight: "800", fontSize: 12 },
+
+    controls: {
+      paddingTop: 18,
       flexDirection: "row",
+      alignItems: "center",
       justifyContent: "space-between",
-      marginTop: 8,
-      paddingHorizontal: 2,
+      paddingHorizontal: 10,
     },
-    timeTxt: {
-      color: theme.colors.muted,
-      fontWeight: "700",
-      fontSize: 12,
+    ctrlIcon: {
+      width: 46,
+      height: 46,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
     },
 
-    primaryControls: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 18,
-      marginTop: 2,
-      marginBottom: 18,
-    },
-    ctrlBtn: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    playBtn: {
+    playBig: {
       width: 74,
       height: 74,
       borderRadius: 37,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.colors.accent,
+    },
+
+    repeatOneBadge: {
+      position: "absolute",
+      right: -2,
+      top: -6,
+      width: 16,
+      height: 16,
+      borderRadius: 8,
       backgroundColor: theme.colors.accent,
       alignItems: "center",
       justifyContent: "center",
-      ...(Platform.OS === "ios"
-        ? {
-            shadowColor: "#000",
-            shadowOpacity: isDark ? 0.28 : 0.18,
-            shadowRadius: 18,
-            shadowOffset: { width: 0, height: 10 },
-          }
-        : { elevation: 6 }),
     },
+    repeatOneTxt: { color: "white", fontSize: 10, fontWeight: "900" },
 
-    secondaryControls: {
+    bottomRow: {
+      marginTop: 18,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      paddingHorizontal: 18,
-      marginBottom: 18,
     },
-    secondaryBtn: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
+    repeatLabel: { color: theme.colors.muted, fontWeight: "900" },
+    moreBtn: {
+      width: 46,
+      height: 46,
+      borderRadius: 18,
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
       alignItems: "center",
       justifyContent: "center",
     },
 
-    // ✅ "Repeat One" badge
-    repeatOneBadge: {
-      position: "absolute",
-      right: 10,
-      top: 8,
-      width: 14,
-      height: 14,
-      borderRadius: 7,
-      backgroundColor: theme.colors.accent,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    repeatOneTxt: {
-      color: "white",
-      fontSize: 10,
-      fontWeight: "900",
-      lineHeight: 10,
-    },
-
-    lyricsArea: {
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-      paddingTop: 6,
-    },
-    lyricsTxt: {
-      color: theme.colors.muted,
-      fontWeight: "700",
-      fontSize: 12,
-    },
+    lyricsHint: { alignItems: "center", justifyContent: "center", gap: 6, paddingTop: 10 },
+    lyricsTxt: { color: theme.colors.muted, fontWeight: "700", fontSize: 12 },
 
     emptyTxt: { color: theme.colors.text, fontWeight: "900" },
   });
-};

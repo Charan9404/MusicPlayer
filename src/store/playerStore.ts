@@ -41,6 +41,7 @@ type PlayerState = {
   // runtime refs
   sound: Audio.Sound | null;
   _audioModeReady: boolean;
+  _playRequestId: number;
 
   // actions
   setQueueAndPlay: (songs: Song[], startIndex?: number) => Promise<void>;
@@ -49,6 +50,7 @@ type PlayerState = {
   togglePlayPause: () => Promise<void>;
   play: () => Promise<void>;
   pause: () => Promise<void>;
+  stop: () => Promise<void>;
 
   next: () => Promise<void>;
   prev: () => Promise<void>;
@@ -67,6 +69,9 @@ type PlayerState = {
   getCurrentSong: () => Song | null;
 };
 
+// Guards against overlapping load/play requests (prevents accidental 2x/3x playback)
+let _playSeq = 0;
+
 function getPlayableUrl(song: Song): string | null {
   // common keys
   if (typeof song?.audioUrl === "string") return song.audioUrl;
@@ -79,13 +84,16 @@ function getPlayableUrl(song: Song): string | null {
   if (typeof d === "string") return d;
 
   // downloadUrl: { url: string }
-  if (d && typeof d === "object" && !Array.isArray(d) && typeof d.url === "string") {
-    return d.url;
+  if (d && typeof d === "object" && !Array.isArray(d)) {
+    const u = (d as any).url ?? (d as any).link ?? (d as any).uri;
+    if (typeof u === "string") return u;
   }
 
   // downloadUrl: [{ url: string }, ...] -> pick best/last
   if (Array.isArray(d)) {
-    const candidates = d.map((x) => x?.url).filter(Boolean) as string[];
+    const candidates = d
+      .map((x) => (x as any)?.url ?? (x as any)?.link ?? (x as any)?.uri)
+      .filter(Boolean) as string[];
     if (candidates.length) return candidates[candidates.length - 1];
   }
 
@@ -94,7 +102,8 @@ function getPlayableUrl(song: Song): string | null {
   
   if (Array.isArray(d)) {
     // try first and last elements of array
-    maybe = d[0]?.url ?? d[d.length - 1]?.url;
+    maybe = (d as any)[0]?.url ?? (d as any)[0]?.link ?? (d as any)[0]?.uri ??
+            (d as any)[d.length - 1]?.url ?? (d as any)[d.length - 1]?.link ?? (d as any)[d.length - 1]?.uri;
   }
   
   if (!maybe) {
@@ -157,6 +166,7 @@ export const usePlayerStore = create<PlayerState>()(
 
       sound: null,
       _audioModeReady: false,
+      _playRequestId: 0,
 
       // ---------------- helpers ----------------
       getCurrentSong: () => {
@@ -175,52 +185,55 @@ export const usePlayerStore = create<PlayerState>()(
       playSingle: async (song) => {
         if (!song) return;
 
-        set({ isLoading: true, lastError: null });
+        // Token to prevent overlapping sounds when user taps multiple times quickly.
+        const requestId = ++_playSeq;
+        set({ isLoading: true, lastError: null, _playRequestId: requestId });
 
         await ensureAudioModeOnce(get, set);
         await unloadSound(get, set);
 
+        // If a newer request started while we were unloading, abort.
+        if (get()._playRequestId !== requestId) return;
+
         const url = getPlayableUrl(song);
         if (!url) {
-          set({ isLoading: false, lastError: "No playable URL found for this track." });
+          if (get()._playRequestId === requestId) {
+            set({ isLoading: false, lastError: "No playable URL found for this track." });
+          }
           return;
         }
 
+        let sound: Audio.Sound | null = null;
         try {
-          const sound = new Audio.Sound();
+          sound = new Audio.Sound();
 
           sound.setOnPlaybackStatusUpdate((status) => {
+            // Ignore stale callbacks from older sounds.
+            if (get()._playRequestId !== requestId) return;
             if (!status || !("isLoaded" in status) || !status.isLoaded) return;
 
-            // update progress
             set({
               isPlaying: status.isPlaying,
               positionMs: status.positionMillis ?? 0,
               durationMs: status.durationMillis ?? 0,
             });
 
-            // handle finish
             if (status.didJustFinish) {
               const { repeatMode } = get();
 
               if (repeatMode === "one") {
-                // replay same
                 get().seekTo(0).then(() => get().play()).catch(() => {});
                 return;
               }
 
-              // off or all -> go next, but if end and repeatMode=off stop
               const q = get().queue;
               const i = get().currentIndex;
-
               const atEnd = i >= q.length - 1;
               if (atEnd && repeatMode === "off") {
-                // stop at end
                 get().pause().catch(() => {});
                 return;
               }
 
-              // repeat all loops
               get().next().catch(() => {});
             }
           });
@@ -228,21 +241,34 @@ export const usePlayerStore = create<PlayerState>()(
           const loopOne = get().repeatMode === "one";
           await sound.loadAsync(
             { uri: url },
-            { shouldPlay: true, isLooping: loopOne },
+            {
+              shouldPlay: true,
+              isLooping: loopOne,
+              progressUpdateIntervalMillis: 500,
+            },
             false
           );
 
+          // Safety: ensure playback rate is always 1x (prevents accidental speed-ups).
+          await sound.setRateAsync(1.0, true);
 
-          set({
-            sound,
-            isLoading: false,
-            isPlaying: true,
-          });
+          // If a newer request started while we were loading, unload this one and abort.
+          if (get()._playRequestId !== requestId) {
+            await sound.unloadAsync().catch(() => {});
+            return;
+          }
+
+          set({ sound, isLoading: false, isPlaying: true });
         } catch (e: any) {
-          set({
-            isLoading: false,
-            lastError: e?.message ?? "Failed to start playback",
-          });
+          if (sound) {
+            await sound.unloadAsync().catch(() => {});
+          }
+          if (get()._playRequestId === requestId) {
+            set({
+              isLoading: false,
+              lastError: e?.message ?? "Failed to start playback",
+            });
+          }
         }
       },
 
@@ -271,6 +297,11 @@ export const usePlayerStore = create<PlayerState>()(
         } catch (e: any) {
           set({ lastError: e?.message ?? "Pause failed" });
         }
+      },
+
+      stop: async () => {
+        // Stop playback and free the audio resource (keep queue/index intact)
+        await unloadSound(get, set);
       },
 
       togglePlayPause: async () => {

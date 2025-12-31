@@ -1,12 +1,10 @@
 import React from "react";
 import { View, Text, Image, Pressable, StyleSheet } from "react-native";
-import { useNavigation } from "@react-navigation/native";
-import { Ionicons } from "@expo/vector-icons";
 import { usePlayerStore } from "../store/playerStore";
 import { useTheme } from "../theme/ThemeProvider";
+import { navigate } from "../navigation/nav";
 
 export default function MiniPlayer() {
-  const navigation = useNavigation<any>();
   const { theme } = useTheme();
   const s = styles(theme);
 
@@ -25,21 +23,10 @@ export default function MiniPlayer() {
       null) as null | (() => void);
 
   const play =
-    (store.play ?? store.resume ?? store.start ?? store.playCurrent ?? null) as
-      | null
-      | (() => void);
+    (store.play ?? store.resume ?? store.start ?? store.playCurrent ?? null) as null | (() => void);
 
   const pause =
-    (store.pause ?? store.stop ?? store.halt ?? store.pauseCurrent ?? null) as
-      | null
-      | (() => void);
-
-  const next =
-    (store.next ??
-      store.skipNext ??
-      store.playNext ??
-      store.nextTrack ??
-      null) as null | (() => void);
+    (store.pause ?? store.stop ?? store.halt ?? store.pauseCurrent ?? null) as null | (() => void);
 
   const onPlayPause = () => {
     if (togglePlayPause) return togglePlayPause();
@@ -47,159 +34,59 @@ export default function MiniPlayer() {
     return play?.();
   };
 
-  const onNext = () => next?.();
-
   if (!song) return null;
 
   return (
-    <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-      <View style={s.container} pointerEvents="box-none">
-        <Pressable
-          onPress={() => navigation.navigate("Player")}
-          style={s.wrap}
-        >
-          {/* Left: art + texts */}
-          <View style={s.left}>
-            <Image source={{ uri: song.imageUrl }} style={s.art} />
-            <View style={{ flex: 1 }}>
-              <Text style={s.nowPlaying}>Now playing</Text>
-              <Text numberOfLines={1} style={s.title}>
-                {song.name}
-              </Text>
-              <Text numberOfLines={1} style={s.sub}>
-                {song.artists}
-              </Text>
-            </View>
-          </View>
+    <View style={s.wrap}>
+      <Pressable onPress={() => navigate("Player")} style={s.left}>
+        <Image source={{ uri: song.imageUrl }} style={s.art} />
+        <View style={{ flex: 1 }}>
+          <Text numberOfLines={1} style={s.title}>
+            {song.name}
+          </Text>
+          <Text numberOfLines={1} style={s.sub}>
+            {song.artists}
+          </Text>
+        </View>
+      </Pressable>
 
-          {/* Right: controls */}
-          <View style={s.controls}>
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation();
-                onPlayPause();
-              }}
-              style={s.iconBtnPrimary}
-              hitSlop={10}
-            >
-              <Ionicons
-                name={isPlaying ? "pause" : "play"}
-                size={18}
-                color={"#fff"}
-              />
-            </Pressable>
-
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation();
-                onNext();
-              }}
-              style={s.iconBtn}
-              hitSlop={10}
-            >
-              <Ionicons
-                name="play-skip-forward"
-                size={18}
-                color={theme.colors.text}
-              />
-            </Pressable>
-          </View>
-        </Pressable>
-      </View>
+      <Pressable onPress={onPlayPause} style={s.btn}>
+        <Text style={s.btnTxt}>{isPlaying ? "Pause" : "Play"}</Text>
+      </Pressable>
     </View>
   );
 }
 
-const styles = (theme: any) => {
-  const surface2 = theme.colors.surface2 ?? theme.colors.surface;
-
-  return StyleSheet.create({
-    container: {
+const styles = (theme: any) =>
+  StyleSheet.create({
+    wrap: {
       position: "absolute",
       left: 14,
       right: 14,
       bottom: 14,
-    },
-
-    wrap: {
-      height: 78,
+      height: 74,
       borderRadius: theme.radius.lg,
-      backgroundColor: surface2,
+      backgroundColor: theme.colors.surface2,
       borderWidth: 1,
       borderColor: theme.colors.border,
       paddingHorizontal: 12,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-
-      // premium shadow
       shadowColor: "#000",
-      shadowOpacity: theme.mode === "dark" ? 0.28 : 0.10,
-      shadowRadius: 20,
-      shadowOffset: { width: 0, height: 10 },
-      elevation: 6,
+      shadowOpacity: theme.mode === "dark" ? 0.18 : 0.06,
+      shadowRadius: 14,
+      elevation: 2,
     },
-
-    left: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      flex: 1,
-      paddingRight: 10,
-    },
-
-    art: {
-      width: 52,
-      height: 52,
-      borderRadius: 16,
-      backgroundColor: theme.colors.surface,
-    },
-
-    nowPlaying: {
-      color: theme.colors.muted,
-      fontSize: 11,
-      fontWeight: "700",
-      marginBottom: 2,
-    },
-
-    title: {
-      color: theme.colors.text,
-      fontSize: 14,
-      fontWeight: "900",
-      lineHeight: 18,
-    },
-
-    sub: {
-      color: theme.colors.muted,
-      fontSize: 12,
-      fontWeight: "700",
-      marginTop: 2,
-    },
-
-    controls: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-    },
-
-    iconBtnPrimary: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
+    left: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1, paddingRight: 10 },
+    art: { width: 46, height: 46, borderRadius: 14, backgroundColor: theme.colors.surface },
+    title: { color: theme.colors.text, fontSize: 14, fontWeight: "900" },
+    sub: { color: theme.colors.muted, fontSize: 12, marginTop: 2 },
+    btn: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: theme.radius.pill,
       backgroundColor: theme.colors.accent,
-      alignItems: "center",
-      justifyContent: "center",
     },
-
-    iconBtn: {
-      width: 40,
-      height: 40,
-      borderRadius: 18,
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      alignItems: "center",
-      justifyContent: "center",
-    },
+    btnTxt: { color: "white", fontWeight: "900" },
   });
-};

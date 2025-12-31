@@ -1,52 +1,42 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
-import { NavigationContainer, createNavigationContainerRef } from "@react-navigation/native";
+import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import Home from "./src/screens/Home";
 import Player from "./src/screens/Player";
 import Queue from "./src/screens/Queue";
+import Album from "./src/screens/Album";
+
 import MiniPlayer from "./src/components/MiniPlayer";
 
-import { audio } from "./src/player/audio";
-import { usePlayerStore } from "./src/store/playerStore";
 import { ThemeProvider, useTheme } from "./src/theme/ThemeProvider";
-
-
-type RootStackParamList = {
-  Home: undefined;
-  Player: undefined;
-  Queue: undefined;
-};
+import { navigationRef, RootStackParamList } from "./src/navigation/nav";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-const navRef = createNavigationContainerRef<RootStackParamList>();
 
 function AppInner() {
   const { theme } = useTheme();
-
   const [routeName, setRouteName] = React.useState<string>("Home");
 
-  React.useEffect(() => {
-    audio.initAudioMode();
-  }, []);
-
-  const showMini = routeName !== "Player";
+  const onNavChange = () => {
+    const r = navigationRef.getCurrentRoute();
+    setRouteName(r?.name ?? "Home");
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.bg }]}>
-      <NavigationContainer
-        ref={navRef}
-        onReady={() => setRouteName(navRef.getCurrentRoute()?.name ?? "Home")}
-        onStateChange={() => setRouteName(navRef.getCurrentRoute()?.name ?? "Home")}
-      >
+      <NavigationContainer ref={navigationRef} onReady={onNavChange} onStateChange={onNavChange}>
+        {/* ✅ ONLY Screens here */}
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Home" component={Home} />
           <Stack.Screen name="Player" component={Player} />
           <Stack.Screen name="Queue" component={Queue} />
+          <Stack.Screen name="Album" component={Album} />
         </Stack.Navigator>
 
-        {showMini ? <MiniPlayer /> : null}
+        {/* ✅ Outside Navigator, but inside NavigationContainer */}
+        {routeName !== "Player" ? <MiniPlayer /> : null}
       </NavigationContainer>
     </View>
   );

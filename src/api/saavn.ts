@@ -16,7 +16,9 @@ const api = axios.create({
 function pickLastUrl(arr: any[], fallback = ""): string {
   if (!Array.isArray(arr) || arr.length === 0) return fallback;
   const last = arr[arr.length - 1];
-  return last?.url || fallback;
+  // different wrappers use different keys (url/link)
+  if (typeof last === "string") return last;
+  return last?.url || last?.link || last?.uri || fallback;
 }
 
 export async function searchSongs(
