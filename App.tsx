@@ -3,6 +3,8 @@ import { View, StyleSheet } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
+
+
 import Home from "./src/screens/Home";
 import Player from "./src/screens/Player";
 import Queue from "./src/screens/Queue";
@@ -27,7 +29,7 @@ function AppInner() {
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.bg }]}>
       <NavigationContainer ref={navigationRef} onReady={onNavChange} onStateChange={onNavChange}>
-        {/* ✅ ONLY Screens here */}
+        {/* Screens here */}
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Home" component={Home} />
           <Stack.Screen name="Player" component={Player} />
@@ -35,7 +37,7 @@ function AppInner() {
           <Stack.Screen name="Album" component={Album} />
         </Stack.Navigator>
 
-        {/* ✅ Outside Navigator, but inside NavigationContainer */}
+        {/* Outside Navigator, but inside NavigationContainer */}
         {routeName !== "Player" ? <MiniPlayer /> : null}
       </NavigationContainer>
     </View>

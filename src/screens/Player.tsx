@@ -218,7 +218,7 @@ export default function Player() {
             <Ionicons name="list" size={18} color={theme.colors.text} />
           </Pressable>
           <Pressable onPress={toggle} style={s.iconBtn}>
-            <Text style={s.modeTxt}>{mode === "dark" ? "☀" : "🌙"}</Text>
+            <Text style={s.modeTxt}>{mode === "dark" ? "☀" : "○"}</Text>
           </Pressable>
         </View>
       </View>

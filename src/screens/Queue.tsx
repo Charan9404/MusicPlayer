@@ -99,7 +99,7 @@ export default function Queue() {
       <Text style={s.headerTitle}>Queue</Text>
 
       <Pressable onPress={toggle} style={s.iconBtn} hitSlop={10}>
-        <Text style={s.modeTxt}>{mode === "dark" ? "☀" : "🌙"}</Text>
+        <Text style={s.modeTxt}>{mode === "dark" ? "☀" : "○"}</Text>
       </Pressable>
     </View>
   );

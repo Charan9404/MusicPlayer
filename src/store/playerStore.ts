@@ -450,7 +450,7 @@ export const usePlayerStore = create<PlayerState>()(
       const next: RepeatMode = cur === "off" ? "one" : cur === "one" ? "all" : "off";
       set({ repeatMode: next });
 
-      // ✅ make repeat-one actually loop at audio engine level
+      // make repeat-one actually loop at audio engine level
       const s = get().sound;
       if (s) {
         s.setIsLoopingAsync(next === "one").catch(() => {});
@@ -462,7 +462,7 @@ export const usePlayerStore = create<PlayerState>()(
       name: "music-player-store-v1",
       storage: createJSONStorage(() => AsyncStorage),
 
-      // ✅ Only persist serializable fields
+      // Only persist serializable fields
       partialize: (state: PlayerState) => ({
         queue: state.queue,
         currentIndex: state.currentIndex,

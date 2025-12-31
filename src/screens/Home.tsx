@@ -568,7 +568,7 @@ export default function Home() {
             <Ionicons name="search" size={18} color={theme.colors.text} />
           </Pressable>
           <Pressable onPress={toggle} style={s.iconBtn}>
-            <Text style={s.modeTxt}>{mode === "dark" ? "☀" : "🌙"}</Text>
+            <Text style={s.modeTxt}>{mode === "dark" ? "☀" : "○"}</Text>
           </Pressable>
         </View>
       </View>
@@ -620,7 +620,7 @@ export default function Home() {
         </View>
       ) : null}
 
-      {/* ✅ Premium Pagination (Songs tab only) */}
+      {/* Premium Pagination (Songs tab only) */}
       {activeTab === "Songs" ? (
         <View style={s.pagerWrap}>
           <Pressable
@@ -1008,7 +1008,7 @@ const styles = (theme: any) =>
     },
     goTxt: { color: "white", fontWeight: "900" },
 
-    // ✅ Premium pager styles
+    // Premium pager styles
     pagerWrap: {
       paddingHorizontal: 14,
       paddingTop: 12,
