@@ -225,7 +225,13 @@ export const usePlayerStore = create<PlayerState>()(
             }
           });
 
-          await sound.loadAsync({ uri: url }, { shouldPlay: true }, false);
+          const loopOne = get().repeatMode === "one";
+          await sound.loadAsync(
+            { uri: url },
+            { shouldPlay: true, isLooping: loopOne },
+            false
+          );
+
 
           set({
             sound,
@@ -409,10 +415,17 @@ export const usePlayerStore = create<PlayerState>()(
       },
 
       cycleRepeat: () => {
-        const cur = get().repeatMode;
-        const next: RepeatMode = cur === "off" ? "one" : cur === "one" ? "all" : "off";
-        set({ repeatMode: next });
+      const cur = get().repeatMode;
+      const next: RepeatMode = cur === "off" ? "one" : cur === "one" ? "all" : "off";
+      set({ repeatMode: next });
+
+      // ✅ make repeat-one actually loop at audio engine level
+      const s = get().sound;
+      if (s) {
+        s.setIsLoopingAsync(next === "one").catch(() => {});
+              }
       },
+
     }),
     {
       name: "music-player-store-v1",

@@ -64,11 +64,13 @@ export default function Home() {
 
   const [sortOpen, setSortOpen] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("Ascending");
+  const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
 
   const { setQueueAndPlay } = usePlayerStore();
 
-  const runSearch = async (nextPage = 0) => {
-    const query = q.trim();
+  // ✅ IMPORTANT: allow overriding the query so we don't use stale state after setQ()
+  const runSearch = async (nextPage = 0, overrideQuery?: string) => {
+    const query = (overrideQuery ?? q).trim();
     if (!query) return;
 
     try {
@@ -85,7 +87,7 @@ export default function Home() {
   };
 
   React.useEffect(() => {
-    runSearch(0);
+    runSearch(0, q);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -105,22 +107,44 @@ export default function Home() {
     }));
   }, [songs]);
 
+  // ✅ Albums derived from songs. If album name missing => treat as a single album card.
   const albums = useMemo(() => {
-    const map = new Map<string, string>(); // album -> imageUrl
+    const map = new Map<
+      string,
+      { id: string; name: string; imageUrl: string; subtitle?: string }
+    >();
+
     for (const item of songs as any[]) {
-      const album = getAlbumName(item);
-      if (!album) continue;
-      if (!map.has(album)) map.set(album, item.imageUrl);
+      const rawAlbum = String(getAlbumName(item) ?? "").trim();
+      const isSingle = !rawAlbum;
+
+      const displayName = isSingle ? String(item?.name ?? "Single") : rawAlbum;
+      if (!displayName) continue;
+
+      const key = displayName.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, {
+          id: displayName,
+          name: displayName,
+          imageUrl: item.imageUrl,
+          subtitle: isSingle ? primaryArtist(item.artists) : undefined,
+        });
+      }
     }
-    return Array.from(map.entries()).map(([name, imageUrl]) => ({
-      id: name,
-      name,
-      imageUrl,
-    }));
+
+    return Array.from(map.values()).slice(0, 60);
   }, [songs]);
 
+  const filteredForArtist = useMemo(() => {
+    if (!selectedArtist) return songs;
+    const needle = selectedArtist.trim().toLowerCase();
+    return (songs ?? []).filter((it: any) =>
+      String(it?.artists ?? "").toLowerCase().includes(needle)
+    );
+  }, [songs, selectedArtist]);
+
   const sortedSongs = useMemo(() => {
-    const arr = [...songs] as any[];
+    const arr = [...(filteredForArtist ?? [])] as any[];
 
     const byName = (a: any, b: any) =>
       String(a?.name ?? "").localeCompare(String(b?.name ?? ""));
@@ -150,7 +174,7 @@ export default function Home() {
     }
 
     return arr as SaavnSong[];
-  }, [songs, sortKey]);
+  }, [filteredForArtist, sortKey]);
 
   const TabPill = ({ label }: { label: TabKey }) => {
     const isActive = activeTab === label;
@@ -235,11 +259,22 @@ export default function Home() {
           </View>
         </View>
 
-        <Pressable onPress={() => setQueueAndPlay(sortedSongs, index)} style={s.playCircle}>
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation();
+            setQueueAndPlay(sortedSongs, index);
+          }}
+          style={s.playCircle}
+        >
           <Ionicons name="play" size={16} color={"white"} />
         </Pressable>
 
-        <Pressable onPress={() => {}} style={s.moreBtn}>
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation();
+          }}
+          style={s.moreBtn}
+        >
           <Ionicons name="ellipsis-vertical" size={18} color={theme.colors.muted} />
         </Pressable>
       </Pressable>
@@ -263,8 +298,6 @@ export default function Home() {
             onPress={() => {
               setShowSearch((prev) => {
                 const next = !prev;
-
-                // When showing search: go to Songs tab and focus input
                 if (next) {
                   setActiveTab("Songs");
                   setTimeout(() => searchRef.current?.focus(), 80);
@@ -305,11 +338,20 @@ export default function Home() {
                 placeholderTextColor={theme.colors.muted}
                 style={s.searchInput}
                 returnKeyType="search"
-                onSubmitEditing={() => runSearch(0)}
+                onSubmitEditing={() => {
+                  setSelectedArtist(null);
+                  runSearch(0);
+                }}
               />
             </View>
 
-            <Pressable onPress={() => runSearch(0)} style={s.searchGo}>
+            <Pressable
+              onPress={() => {
+                setSelectedArtist(null);
+                runSearch(0);
+              }}
+              style={s.searchGo}
+            >
               <Text style={s.searchGoTxt}>Go</Text>
             </Pressable>
           </View>
@@ -354,7 +396,6 @@ export default function Home() {
           contentContainerStyle={{ paddingBottom: 160 }}
           renderItem={() => (
             <View>
-              {/* ✅ See all now WORKS */}
               <SectionHeader
                 title="Recently Played"
                 rightText="See all"
@@ -397,11 +438,13 @@ export default function Home() {
                   <SuggestedCard
                     item={{ imageUrl: item.imageUrl, name: item.name }}
                     onPress={() => {
-                      setQ(item.name);
+                      const name = item.name;
+                      setSelectedArtist(name);
+                      setQ(name);
                       setActiveTab("Songs");
                       setShowSearch(true);
                       setTimeout(() => searchRef.current?.focus(), 80);
-                      runSearch(0);
+                      runSearch(0, name);
                     }}
                     rounded={999}
                   />
@@ -425,6 +468,7 @@ export default function Home() {
                 renderItem={({ item }) => (
                   <SuggestedCard
                     item={{ imageUrl: item.imageUrl, name: item.name }}
+                    subtitle={item.subtitle}
                     onPress={() => {}}
                     rounded={18}
                   />
@@ -461,11 +505,13 @@ export default function Home() {
           renderItem={({ item }) => (
             <Pressable
               onPress={() => {
-                setQ(item.name);
+                const name = item.name;
+                setSelectedArtist(name);
+                setQ(name);
                 setActiveTab("Songs");
                 setShowSearch(true);
                 setTimeout(() => searchRef.current?.focus(), 80);
-                runSearch(0);
+                runSearch(0, name);
               }}
               style={s.simpleRow}
             >

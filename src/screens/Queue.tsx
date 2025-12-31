@@ -12,11 +12,9 @@ export default function Queue() {
   const { theme, mode, toggle } = useTheme();
   const s = styles(theme);
 
-  // subscribe properly
   const queue = usePlayerStore((st: any) => st.queue ?? []);
   const currentIndex = usePlayerStore((st: any) => st.currentIndex ?? 0);
 
-  // These MAY exist in your store; if not, we fallback to zustand setState.
   const removeAt = usePlayerStore(
     (st: any) =>
       (st.removeAt ?? st.removeFromQueue ?? st.removeQueueItem ?? st.remove ?? null) as
@@ -42,7 +40,7 @@ export default function Queue() {
     (st: any) => (st.play ?? st.resume ?? st.start ?? st.playCurrent ?? null) as null | (() => void)
   );
 
-  // --------- Reorder helpers (works even if store doesn't provide moveUp/moveDown) ----------
+  // ---------- reorder helpers ----------
   const swap = (arr: any[], i: number, j: number) => {
     const next = arr.slice();
     const tmp = next[i];
@@ -52,17 +50,13 @@ export default function Queue() {
   };
 
   const applyQueueReorder = (nextQueue: any[], nextCurrentIndex: number) => {
-    // Prefer any explicit setters if you have them, else fallback to zustand setState.
-    // zustand hooks expose setState/getState
     (usePlayerStore as any).setState({ queue: nextQueue, currentIndex: nextCurrentIndex });
   };
 
   const moveUpLocal = (i: number) => {
     if (i <= 0) return;
-
     const nextQueue = swap(queue, i, i - 1);
 
-    // adjust currentIndex so the currently-playing song remains consistent
     let nextIdx = currentIndex;
     if (currentIndex === i) nextIdx = i - 1;
     else if (currentIndex === i - 1) nextIdx = i;
@@ -72,7 +66,6 @@ export default function Queue() {
 
   const moveDownLocal = (i: number) => {
     if (i >= queue.length - 1) return;
-
     const nextQueue = swap(queue, i, i + 1);
 
     let nextIdx = currentIndex;
@@ -83,16 +76,12 @@ export default function Queue() {
   };
 
   const onPressRow = (i: number) => {
-    // best: play immediately at index
     if (setQueueAndPlay) return setQueueAndPlay(queue, i);
-
-    // fallback: set index then play
     setIndexOnly?.(i);
     play?.();
   };
 
   const keyFor = (item: any, idx: number) => {
-    // IMPORTANT: never use index only for reorder lists
     return (
       item?.id?.toString?.() ??
       item?.songId?.toString?.() ??
@@ -101,54 +90,82 @@ export default function Queue() {
     );
   };
 
+  const ListHeader = () => (
+    <View style={s.headerRow}>
+      <Pressable onPress={() => nav.goBack()} style={s.iconBtn} hitSlop={10}>
+        <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
+      </Pressable>
+
+      <Text style={s.headerTitle}>Queue</Text>
+
+      <Pressable onPress={toggle} style={s.iconBtn} hitSlop={10}>
+        <Text style={s.modeTxt}>{mode === "dark" ? "☀" : "🌙"}</Text>
+      </Pressable>
+    </View>
+  );
+
   return (
     <SafeAreaView style={s.container}>
-      <View style={s.topBar}>
-        <Pressable onPress={() => nav.goBack()} style={s.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={theme.colors.text} />
-          <Text style={s.backTxt}>Back</Text>
-        </Pressable>
-
-        <Text style={s.title}>Queue</Text>
-
-        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-          <Pressable onPress={toggle} style={s.modeBtn}>
-            <Text style={s.modeTxt}>{mode === "dark" ? "☀" : "🌙"}</Text>
-          </Pressable>
-        </View>
-      </View>
-
       <FlatList
         data={queue}
         keyExtractor={keyFor}
-        contentContainerStyle={{ paddingBottom: 120 }}
+        contentContainerStyle={{ paddingBottom: 120, paddingTop: 6 }}
+        ListHeaderComponent={<ListHeader />}
+        ItemSeparatorComponent={() => <View style={s.sep} />}
         renderItem={({ item, index }) => {
           const active = index === currentIndex;
 
           return (
-            <Pressable onPress={() => onPressRow(index)} style={[s.row, active && s.rowActive]}>
+            <Pressable onPress={() => onPressRow(index)} style={s.row}>
+              {/* Active indicator bar */}
+              <View style={[s.activeBar, active && s.activeBarOn]} />
+
               <Image source={{ uri: item.imageUrl }} style={s.art} />
 
               <View style={{ flex: 1 }}>
+                {active ? <Text style={s.nowPlaying}>Now playing</Text> : null}
+
                 <Text numberOfLines={1} style={s.songName}>
                   {item.name}
                 </Text>
+
                 <Text numberOfLines={1} style={s.artist}>
                   {item.artists}
                 </Text>
               </View>
 
               <View style={s.actions}>
-                <Pressable onPress={() => moveUpLocal(index)} style={s.iconPill}>
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    moveUpLocal(index);
+                  }}
+                  style={s.smallBtn}
+                  hitSlop={10}
+                >
                   <Ionicons name="chevron-up" size={18} color={theme.colors.text} />
                 </Pressable>
 
-                <Pressable onPress={() => moveDownLocal(index)} style={s.iconPill}>
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    moveDownLocal(index);
+                  }}
+                  style={s.smallBtn}
+                  hitSlop={10}
+                >
                   <Ionicons name="chevron-down" size={18} color={theme.colors.text} />
                 </Pressable>
 
-                <Pressable onPress={() => removeAt?.(index)} style={s.removePill}>
-                  <Ionicons name="close" size={18} color="white" />
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    removeAt?.(index);
+                  }}
+                  style={s.deleteBtn}
+                  hitSlop={10}
+                >
+                  <Ionicons name="close" size={18} color={"white"} />
                 </Pressable>
               </View>
             </Pressable>
@@ -159,71 +176,90 @@ export default function Queue() {
   );
 }
 
-const styles = (theme: any) =>
-  StyleSheet.create({
+const styles = (theme: any) => {
+  const isDark = theme.mode === "dark";
+  const rowBg = theme.colors.surface2 ?? theme.colors.surface;
+
+  return StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.bg, paddingHorizontal: 16 },
 
-    topBar: {
+    headerRow: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      paddingTop: 6,
       paddingBottom: 10,
     },
+    headerTitle: { color: theme.colors.text, fontSize: 16, fontWeight: "900" },
 
-    backBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 8 },
-    backTxt: { color: theme.colors.text, fontWeight: "900" },
-
-    title: { color: theme.colors.text, fontSize: 18, fontWeight: "900" },
-
-    modeBtn: {
+    iconBtn: {
       width: 42,
       height: 42,
       borderRadius: 21,
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
       alignItems: "center",
       justifyContent: "center",
+      backgroundColor: "transparent",
     },
-    modeTxt: { color: theme.colors.text, fontSize: 18, fontWeight: "900" },
+    modeTxt: { color: theme.colors.text, fontSize: 16, fontWeight: "900" },
+
+    // subtle separators instead of shadows
+    sep: {
+      height: 10,
+    },
 
     row: {
-      marginTop: 12,
       flexDirection: "row",
-      gap: 12,
       alignItems: "center",
-      padding: 12,
+      gap: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
       borderRadius: theme.radius.lg,
-      backgroundColor: theme.colors.surface2,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
+      backgroundColor: rowBg,
+      overflow: "hidden",
     },
-    rowActive: { borderColor: theme.colors.accent },
 
-    art: { width: 52, height: 52, borderRadius: 16, backgroundColor: theme.colors.surface },
+    // Active accent bar (cleaner than shaded highlight)
+    activeBar: {
+      width: 3,
+      height: "100%",
+      borderRadius: 2,
+      backgroundColor: "transparent",
+    },
+    activeBarOn: {
+      backgroundColor: theme.colors.accent,
+    },
+
+    art: { width: 54, height: 54, borderRadius: 16, backgroundColor: theme.colors.surface },
+
+    nowPlaying: {
+      color: theme.colors.accent,
+      fontSize: 11,
+      fontWeight: "900",
+      marginBottom: 2,
+    },
+
     songName: { color: theme.colors.text, fontSize: 14, fontWeight: "900" },
     artist: { color: theme.colors.muted, fontSize: 12, marginTop: 2, fontWeight: "700" },
 
     actions: { flexDirection: "row", alignItems: "center", gap: 8 },
 
-    iconPill: {
-      width: 38,
-      height: 38,
-      borderRadius: 12,
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
+    // flat small buttons (no borders/shadows)
+    smallBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       alignItems: "center",
       justifyContent: "center",
+      backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)",
     },
 
-    removePill: {
-      width: 42,
-      height: 38,
-      borderRadius: 12,
-      backgroundColor: "#B91C1C",
+    // smaller + cleaner delete
+    deleteBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       alignItems: "center",
       justifyContent: "center",
+      backgroundColor: isDark ? "#EF4444" : "#F43F5E",
     },
   });
+};
